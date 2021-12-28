@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+PROJECT_NAME="xmas-house"
+RPI_FOLDER="/media/frantisek/RPI-RP2/"
+
+cd build
+cmake .. \
+    && make $PROJECT_NAME \
+    && cp   $PROJECT_NAME.uf2 $RPI_FOLDER
+

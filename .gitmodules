@@ -1,0 +1,6 @@
+[submodule "pico-sdk"]
+	path = pico-sdk
+	url = https://github.com/raspberrypi/pico-sdk
+[submodule "TM1637-pico"]
+	path = TM1637-pico
+	url = https://github.com/wahlencraft/TM1637-pico
