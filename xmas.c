@@ -10,7 +10,35 @@
 
 
 #define SIZE(arr) ( sizeof( arr ) / sizeof( *arr ) )
+
 #define PWM_MAX 31
+
+#define TOP_STRIP 0
+#define TOP_SIZE  8
+#define RGB_R     8
+#define RGB_G     9
+#define RGB_B    10
+#define BUILTIN  11
+
+
+typedef struct
+{
+    uint pin,
+         pwm,
+         chn;
+} led_t;
+
+
+led_t strip[] =
+{
+    {  2 }, {  3 }, { 4 }, { 5 }, { 6 }, { 7 }, { 8 }, { 9 },   // top strip
+    { 14 }, { 10 }, { 11 },                                     // rgb led
+    { 25 },                                                     // builtin led
+};
+
+
+uint pin_clk = 27,
+     pin_dio = 26;
 
 
 typedef struct
@@ -24,32 +52,78 @@ typedef struct
 
 typedef struct
 {
-    uint pin,
-         pwm,
-         chn;
-} led_t;
+    void (*func) (void*);
+    void* state;
+    uint duration;
+
+} effect_t;
 
 
-#define TOP_STRIP 0
-#define TOP_SIZE  8
-#define RGB_R     8
-#define RGB_G     9
-#define RGB_B    10
-#define BUILTIN  11
+void led_init( led_t* led );
+void led_set_brightness( led_t* led, uint val );
+void leds_off();
 
 
-led_t strip[] =
+typedef struct
 {
-    {  2 }, {  3 }, { 4 }, { 5 }, { 6 }, { 7 }, { 8 }, { 9 },   // top strip
-    { 14 }, { 10 }, { 11 },                                     // rgb led
-    { 25 },                                                     // builtin led
-};
+    uint t;
+    uint mod;
+    uint dig;
+
+} alternate_state_t;
 
 
-led_t rgb[3] =
+void alternate( void* ptr );
+
+
+typedef struct
 {
-    { 18 }, { 20 }, { 19 },
-};
+    uint t;
+    int idx;
+
+} crawling_state_t;
+
+
+void crawling( void* ptr );
+
+
+int main()
+{
+    for ( uint i = 0; i < SIZE( strip ); i++ )
+    {
+        led_init( &strip[ i ] );
+    }
+
+    TM1637_init( pin_clk, pin_dio );
+    TM1637_clear();
+    TM1637_set_brightness( 2 );
+
+    crawling_state_t crawl = { 0 };
+    alternate_state_t alt = { 0 };
+
+    const effect_t effects[] =
+    {
+        { alternate, &alt, 2000 },
+        { crawling, &crawl, 2000 },
+    };
+
+    int ms = 20;
+
+    while ( true )
+    {
+        for ( int e = 0; e < SIZE( effects ); e++ )
+        {
+            for ( int t = 0; t < effects[ e ].duration; t++ )
+            {
+                effects[ e ].func( effects[ e ].state );
+                sleep_ms( ms );
+            }
+            leds_off();
+        }
+    }
+
+    return 0;
+}
 
 
 void led_init( led_t* led )
@@ -71,29 +145,22 @@ void led_set_brightness( led_t* led, uint val )
 }
 
 
-typedef struct
+void alternate( void* ptr )
 {
-    uint t;
-    uint mod;
-    uint dig;
+    alternate_state_t* state = ptr;
 
-} alternate_state_t;
-
-
-void alternate( alternate_state_t* state )
-{
     static const dig_step_t dig_effect[] =
     {
         { "o0o0" }, { "0o0o" },
         { "o0o0" }, { "0o0o" },
         { "o0o0" }, { "0o0o" },
-        { "Stas", 3 },
-        { "-tne", 3 },
-        { "a   ", 3 },
-        { "Uese", 3 },
-        { "-le ", 3 },
-        { "UaNo", 3 },
-        { "-Ce ", 3 },
+        { "Stas" },
+        { "-tne" },
+        { "a   " },
+        { "Uese" },
+        { "-le " },
+        { "UaNo" },
+        { "-Ce " },
         { "o0o0" }, { "0o0o" },
         { "o0o0" }, { "0o0o" },
         { "o0o0" }, { "0o0o" },
@@ -143,16 +210,10 @@ void alternate( alternate_state_t* state )
 }
 
 
-typedef struct
+void crawling( void* ptr )
 {
-    uint t;
-    int idx;
+    crawling_state_t* state = ptr;
 
-} crawling_state_t;
-
-
-void crawling( crawling_state_t* state )
-{
     static const uint8_t dig_eff[] =
     {
         0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000,
@@ -161,8 +222,8 @@ void crawling( crawling_state_t* state )
 
     static const int dig_period = 4;
 
-    uint dt = ( state->t / dig_period ) % sizeof( dig_eff );
-    uint di = ( state->t / dig_period ) / sizeof( dig_eff ) % 4;
+    uint dt = ( state->t / dig_period ) % SIZE( dig_eff );
+    uint di = ( state->t / dig_period ) / SIZE( dig_eff ) % 4;
     TM1637_put_4_bytes( di, dig_eff[ dt ] );
 
     uint t = state->t % ( PWM_MAX * 2 + 1 );
@@ -182,32 +243,10 @@ void crawling( crawling_state_t* state )
 }
 
 
-int main()
+void leds_off()
 {
     for ( uint i = 0; i < SIZE( strip ); i++ )
     {
-        led_init( &strip[ i ] );
+        led_set_brightness( &strip[ i ], 0 );
     }
-
-    uint pin_clk = 27,
-         pin_dio = 26;
-
-    TM1637_init( pin_clk, pin_dio );
-    TM1637_clear();
-    TM1637_set_brightness( 1 );
-
-    crawling_state_t state = { 0 };
-    alternate_state_t alt = { 0 };
-
-    while ( true )
-    {
-        // crawling( &state );
-        alternate( &alt );
-
-        int ms = 20;
-        // TODO: add speed change option
-        sleep_ms( ms );
-    }
-
-    return 0;
 }
